@@ -1,11 +1,18 @@
 
-#include "Adafruit_DHT_Particle.h"
+#include <Adafruit_DHT_Particle.h>
 #include <Adafruit_SSD1306_RK.h>
 #include <Adafruit_GFX_RK.h>
 #include <Wire.h>
 
+/// pin for PIR sensor
+#define PIR_MOTION_SENSOR A2
 
-#define DHTPIN D4     // what pin we're connected to
+/// pin for user button
+#define USER_BUTTON_PIN D2
+
+
+/// pin for Humidity and Temp sensor
+#define DHTPIN D4     
 #define DHTTYPE DHT11		// DHT 11 
 // #define DHTTYPE DHT22		// DHT 22 (AM2302)
 //#define DHTTYPE DHT21		// DHT 21 (AM2301)
@@ -19,7 +26,6 @@ DHT dht_sensor(DHTPIN, DHTTYPE);
 // SSD1306 display connected to I2C (SDA, SCL pins)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-#define BUTTON_PIN D2 // the number of the pushbutton pin
 
 static unsigned int _loop_count = 0;
 static float _celsius = 0.0f;
@@ -30,16 +36,17 @@ static float _dewpoint_c = 0.0f;
 // static int _light_lux = 0;
 
 void setup() {
-	Serial.begin(9600); 
+	Serial.begin(115200); 
   Particle.syncTime();
 
 	Particle.publish("state", "begin");
+
+  pinMode(PIR_MOTION_SENSOR, INPUT);
 
   display_setup();
 
   Time.zone(-8.0);
 	dht_sensor.begin();
-  // pinMode(BUTTON_PIN, INPUT);
 
 	delay(2000);
 }
@@ -122,8 +129,8 @@ void loop() {
   _heat_index_c = dht_sensor.getHeatIndex();
   _dewpoint_c = dht_sensor.getDewPoint();
 
-  String report = String::format("{\"hum_p\": %4.2f, \"temp_c\": %4.2f, \"dewp_c\": %4.2f, \"heati_c\": %4.2f}", pct_humidity, celsius, _dewpoint_c, _heat_index_c);
-
+  String report = String::format("{\"hum_p\": %4.2f, \"temp_c\": %4.2f, \"dewp_c\": %4.2f, \"heati_c\": %4.2f}", 
+    pct_humidity, celsius, _dewpoint_c, _heat_index_c);
   Particle.publish("sample", report);
   render_to_oled();
 
@@ -131,18 +138,20 @@ void loop() {
   Serial.println(report);
 
 	_loop_count++;
-	if(_loop_count > 5){
-	  Particle.publish("state", "sleep 30s");
-	  delay(1000);
-	  // System.sleep(SLEEP_MODE_DEEP, 30);  
+	if (_loop_count > 5) {
+	  Particle.publish("state", "sleep 60s");
     Serial.println("sleeping...");
+	  delay(5000);
 
     SystemSleepConfiguration config;
     config.mode(SystemSleepMode::ULTRA_LOW_POWER)
-      .duration(30000)
-      .gpio(D2, RISING);
-    System.sleep(config);
-
+      .duration(60s)
+      .gpio(USER_BUTTON_PIN, RISING)
+      .gpio(PIR_MOTION_SENSOR, CHANGE)
+      // .network(NETWORK_INTERFACE_WIFI_STA)
+      .flag(SystemSleepFlag::WAIT_CLOUD);
+    SystemSleepResult sleep_result = System.sleep(config);
+    Particle.publish("state", String::format("wakeup %d",sleep_result.wakeupReason()));
 	}
 }
 
